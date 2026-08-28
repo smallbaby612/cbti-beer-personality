@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CBTI 测啤气 · 数据看板</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'PingFang SC','Microsoft YaHei',sans-serif; background:#f4f2ec; color:#1a3c2e; min-height:100vh; }
+  .header { background:#1a3c2e; color:#fff; padding:20px 32px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+  .header h1 { font-size:22px; letter-spacing:1px; }
+  .header h1 span { color:#f5c542; }
+  .filters { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .filters input { padding:8px 12px; border:1px solid #cfb991; border-radius:8px; font-size:14px; background:#fff; }
+  .btn { background:#f5c542; color:#1a3c2e; border:none; padding:9px 18px; border-radius:8px; font-weight:bold; cursor:pointer; font-size:14px; }
+  .btn.ghost { background:transparent; color:#fff; border:1px solid #f5c542; }
+  .wrap { max-width:1200px; margin:0 auto; padding:24px 20px 60px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; margin-bottom:24px; }
+  .card { background:#fff; border-radius:14px; padding:18px; box-shadow:0 2px 8px rgba(0,0,0,.06); border-top:4px solid #f5c542; }
+  .card .num { font-size:30px; font-weight:800; color:#1a3c2e; }
+  .card .label { font-size:13px; color:#8a7a5c; margin-top:4px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media(max-width:800px){ .grid{ grid-template-columns:1fr; } }
+  .panel { background:#fff; border-radius:14px; padding:20px; box-shadow:0 2px 8px rgba(0,0,0,.06); }
+  .panel h3 { font-size:16px; margin-bottom:14px; color:#1a3c2e; display:flex; justify-content:space-between; align-items:center; }
+  .panel h3 .exp { font-size:12px; color:#8a7a5c; font-weight:normal; cursor:pointer; text-decoration:underline; }
+  .full { grid-column:1/-1; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th,td { padding:8px 10px; text-align:left; border-bottom:1px solid #efe9dc; }
+  th { background:#faf7ef; color:#8a7a5c; font-weight:600; }
+  tr:hover td { background:#faf7ef; }
+  .login { max-width:360px; margin:120px auto; background:#fff; padding:32px; border-radius:16px; box-shadow:0 4px 20px rgba(0,0,0,.08); }
+  .login h2 { margin-bottom:16px; }
+  .login input { width:100%; padding:10px 14px; border:1px solid #cfb991; border-radius:8px; margin-bottom:12px; font-size:14px; }
+  .login .btn { width:100%; }
+  .err { color:#c0392b; font-size:13px; margin-top:8px; display:none; }
+  .bar-row { display:flex; align-items:center; gap:8px; margin-bottom:8px; font-size:13px; }
+  .bar-row .name { width:150px; flex-shrink:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .bar-row .bar { height:20px; background:#f5c542; border-radius:4px; min-width:2px; }
+  .bar-row .val { font-weight:700; flex-shrink:0; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>CBTI「测啤气」<span>数据看板</span></h1>
+  <div class="filters">
+    <input type="date" id="from">
+    <span style="color:#fff">至</span>
+    <input type="date" id="to">
+    <button class="btn" onclick="load()">查询</button>
+    <button class="btn ghost" onclick="logout()">退出</button>
+  </div>
+</div>
+
+<div class="wrap" id="main" style="display:none">
+  <div class="cards" id="cards"></div>
+  <div class="grid">
+    <div class="panel full">
+      <h3>每日趋势 <span class="exp" onclick="exportCSV('daily')">导出CSV</span></h3>
+      <canvas id="dailyChart" height="90"></canvas>
+    </div>
+    <div class="panel">
+      <h3>渠道来源对比 <span class="exp" onclick="exportCSV('channels')">导出CSV</span></h3>
+      <div id="channelBars"></div>
+    </div>
+    <div class="panel">
+      <h3>答题漏斗</h3>
+      <div id="funnelBars"></div>
+    </div>
+    <div class="panel">
+      <h3>啤酒人格分布 <span class="exp" onclick="exportCSV('personas')">导出CSV</span></h3>
+      <canvas id="personaChart" height="220"></canvas>
+    </div>
+    <div class="panel">
+      <h3>产品推荐排行</h3>
+      <table id="productTable"></table>
+    </div>
+    <div class="panel full">
+      <h3>人格明细</h3>
+      <table id="personaTable"></table>
+    </div>
+  </div>
+</div>
+
+<div class="login" id="login">
+  <h2>🔒 内部数据看板</h2>
+  <input type="password" id="token" placeholder="请输入访问口令" onkeydown="if(event.key==='Enter')doLogin()">
+  <button class="btn" onclick="doLogin()">进入看板</button>
+  <div class="err" id="loginErr">口令错误，请重试</div>
+</div>
+
+<script>
+let token = sessionStorage.getItem('cbti_token') || '';
+let charts = {};
+
+function doLogin(){ token = document.getElementById('token').value.trim(); sessionStorage.setItem('cbti_token', token); load(); }
+function logout(){ sessionStorage.removeItem('cbti_token'); location.reload(); }
+
+function qs(){ const f=document.getElementById('from').value, t=document.getElementById('to').value; let s='?token='+encodeURIComponent(token); if(f)s+='&from='+f; if(t)s+='&to='+t; return s; }
+
+async function load(){
+  const res = await fetch('/api/stats'+qs());
+  if(res.status===401){ document.getElementById('login').style.display='block'; document.getElementById('main').style.display='none'; document.getElementById('loginErr').style.display = token?'block':'none'; return; }
+  const d = await res.json();
+  document.getElementById('login').style.display='none';
+  document.getElementById('main').style.display='block';
+  renderCards(d.summary); renderDaily(d.daily); renderChannels(d.channels); renderFunnel(d.funnel); renderPersonas(d.personas); renderProducts(d.products); renderPersonaTable(d.personas);
+}
+
+function renderCards(s){
+  const items = [
+    ['访问量', s.page_views], ['访客数', s.unique_visitors], ['开始测试', s.starts],
+    ['完成测试', s.completes], ['分享次数', s.shares],
+    ['开始率', s.start_rate+'%'], ['完成率', s.completion_rate+'%'], ['分享率', s.share_rate+'%']
+  ];
+  document.getElementById('cards').innerHTML = items.map(([l,v])=>`<div class="card"><div class="num">${v}</div><div class="label">${l}</div></div>`).join('');
+}
+
+function renderDaily(daily){
+  const ctx = document.getElementById('dailyChart');
+  if(charts.daily) charts.daily.destroy();
+  charts.daily = new Chart(ctx, { type:'line', data:{ labels:daily.map(r=>r.date), datasets:[
+    {label:'访问量', data:daily.map(r=>r.page_views), borderColor:'#1a3c2e', backgroundColor:'rgba(26,60,46,.08)', fill:true, tension:.3},
+    {label:'完成测试', data:daily.map(r=>r.completes), borderColor:'#f5c542', backgroundColor:'rgba(245,197,66,.15)', fill:true, tension:.3}
+  ]}, options:{ plugins:{legend:{position:'bottom'}} } });
+}
+
+function bars(el, data){
+  const max = Math.max(...data.map(r=>r.v), 1);
+  document.getElementById(el).innerHTML = data.map(r=>
+    `<div class="bar-row"><span class="name" title="${r.name}">${r.name}</span><div class="bar" style="width:${r.v/max*100}%"></div><span class="val">${r.v}</span></div>`).join('') || '<p style="color:#8a7a5c;font-size:13px">暂无数据</p>';
+}
+
+function renderChannels(ch){ bars('channelBars', ch.map(c=>({name:c.channel, v:c.page_views}))); }
+function renderFunnel(f){ bars('funnelBars', f.map(x=>({name:'第'+x.question_no+'题', v:x.count}))); }
+
+function renderPersonas(p){
+  const ctx = document.getElementById('personaChart');
+  if(charts.persona) charts.persona.destroy();
+  charts.persona = new Chart(ctx, { type:'bar', data:{ labels:p.map(r=>r.persona_name||r.type_code), datasets:[{ data:p.map(r=>r.count), backgroundColor:'#1a3c2e' }]},
+    options:{ indexAxis:'y', plugins:{legend:{display:false}} } });
+}
+
+function renderProducts(list){
+  document.getElementById('productTable').innerHTML = '<tr><th>产品</th><th>推荐次数</th></tr>' +
+    list.map(r=>`<tr><td>${r.product}</td><td><strong>${r.count}</strong></td></tr>`).join('') || '<tr><td style="color:#8a7a5c">暂无数据</td></tr>';
+}
+
+function renderPersonaTable(list){
+  document.getElementById('personaTable').innerHTML = '<tr><th>代码</th><th>人格名称</th><th>推荐产品</th><th>次数</th></tr>' +
+    list.map(r=>`<tr><td>${r.type_code}</td><td>${r.persona_name}</td><td>${r.product||''}</td><td><strong>${r.count}</strong></td></tr>`).join('') || '<tr><td style="color:#8a7a5c">暂无数据</td></tr>';
+}
+
+function exportCSV(type){ window.open('/api/export'+qs()+'&type='+type, '_blank'); }
+
+// 默认拉近30天
+const today = new Date(Date.now()+8*3600e3).toISOString().slice(0,10);
+const past = new Date(Date.now()+8*3600e3-29*86400e3).toISOString().slice(0,10);
+document.getElementById('from').value = past;
+document.getElementById('to').value = today;
+if(token) load();
+</script>
+</body>
+</html>
