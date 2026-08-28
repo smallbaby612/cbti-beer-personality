@@ -6,32 +6,38 @@
 
 | 文件 | 说明 |
 |---|---|
-| `index.html` | 测试主页面（单文件，含全部题目/结果/分享逻辑与埋点代码）⚠️ 因体积较大（约21MB），需通过 GitHub 网页「Add file → Upload files」上传，或本地 git push |
+| `index.html` | 测试主页面（单文件，含全部题目/结果/分享逻辑与埋点代码）⚠️ 体积较大（约21MB），请通过 GitHub 网页「Add file → Upload files」上传，或本地 git push |
 | `server.js` | 后端服务：埋点接收、统计API、CSV导出（Express，零原生依赖） |
 | `dashboard.html` | 数据看板页面（需口令访问） |
 | `package.json` | 依赖声明（仅 express） |
 | `Dockerfile` | 容器化部署配置 |
+| `render.yaml` | Render 云平台一键部署配置（Blueprint） |
+| `deploy.sh` | 云服务器一键部署脚本（Ubuntu） |
 
-## 本地/服务器运行
+## 自主部署方案
+
+### 方案A：Render 免费部署（零费用，5分钟）
+
+1. 打开 https://render.com 用 GitHub 账号登录
+2. 点 New → Blueprint，选择本仓库
+3. Render 自动识别 `render.yaml` 完成部署
+4. 获得 `https://cbti-beer-test.onrender.com` 域名，测试页即用
+
+注意：免费版15分钟无访问会休眠，再次打开首次加载约30-60秒；重启后历史统计数据会清空（正式商用建议方案B）。
+
+### 方案B：云服务器部署（推荐正式用，约60-100元/年）
+
+1. 购买腾讯云/阿里云「轻量应用服务器」（2核2G、Ubuntu 22.04 镜像即可，香港地域免ICP备案）
+2. SSH登录服务器，执行：
 
 ```bash
-npm install
-ADMIN_TOKEN=你的看板口令 node server.js
-# 访问 http://localhost:3000  （测试页）
-# 访问 http://localhost:3000/dashboard （数据看板）
+sudo bash deploy.sh 你的看板口令
 ```
 
-## Docker 部署（推荐，公司服务器/云主机通用）
+3. 脚本自动完成 Docker 安装、代码拉取、构建、启动
+4. 访问 `http://服务器IP/` 为测试页，`http://服务器IP/dashboard` 为看板
 
-```bash
-docker build -t cbti-app .
-docker run -d -p 3000:3000 \
-  -e ADMIN_TOKEN=你的看板口令 \
-  -v cbti-data:/app/data \
-  --name cbti cbti-app
-```
-
-> 数据文件为 `cbti_events.jsonl`，建议挂载卷持久化。
+数据通过 Docker volume 持久化，重启不丢失。
 
 ## 环境变量
 
@@ -39,17 +45,18 @@ docker run -d -p 3000:3000 \
 |---|---|---|
 | `PORT` | 3000 | 服务端口 |
 | `ADMIN_TOKEN` | cbti-admin-2026 | 看板访问口令，**生产环境务必修改** |
+| `DATA_DIR` | 项目目录 | 数据文件存放目录，指向挂载卷即可持久化 |
 
 ## 数据看板
 
 - 地址：`/dashboard`，输入口令进入
 - 指标：访问量、访客数、开始/完成/分享、开始率、完成率、分享率
 - 维度：每日趋势、渠道来源对比、答题漏斗、16型人格分布、产品推荐排行
-- 导出：趋势/渠道/人格三组数据均可按时间段导出 CSV（Excel 可直接打开）
+- 导出：趋势/渠道/人格三组数据均可按时间段导出 CSV
 
 ## 渠道二维码
 
-生成二维码时在网址后加 `?ch=渠道名` 即可区分来源，例如：
+生成二维码时在网址后加 `?ch=渠道名` 即可区分来源：
 
 - `https://你的域名/?ch=pack` （1L罐联包包装）
 - `https://你的域名/?ch=store` （终端打卡区物料）

@@ -7,7 +7,10 @@ const PORT = process.env.PORT || 3000;
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || 'cbti-admin-2026';
 
 // ---------- 数据存储：JSON Lines 文件，零依赖 ----------
-const DB_FILE = path.join(__dirname, 'cbti_events.jsonl');
+// DATA_DIR 可指向挂载的持久化磁盘（如 Render Disk / Docker volume）
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (e) {}
+const DB_FILE = path.join(DATA_DIR, 'cbti_events.jsonl');
 let events = [];
 try {
   if (fs.existsSync(DB_FILE)) {
