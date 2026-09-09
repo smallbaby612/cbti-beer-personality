@@ -12,7 +12,7 @@ REPO="https://github.com/smallbaby612/cbti-beer-personality.git"
 
 echo "===== 1/4 安装 Node.js（国内镜像源）====="
 if ! command -v node &> /dev/null; then
-  curl -fsSL https://registry.npmmirror.com/-/binary/node/latest-v20.x/node-v20.18.1-linux-x64.tar.gz -o /tmp/node.tar.gz
+  curl -fsSL https://registry.npmmirror.com/-/binary/node/v20.18.1/node-v20.18.1-linux-x64.tar.gz -o /tmp/node.tar.gz
   mkdir -p /usr/local/node && tar -xzf /tmp/node.tar.gz -C /usr/local/node --strip-components=1
   ln -sf /usr/local/node/bin/node /usr/local/bin/node
   ln -sf /usr/local/node/bin/npm /usr/local/bin/npm
@@ -38,6 +38,7 @@ echo "===== 4/4 启动服务 ====="
 mkdir -p /opt/cbti/data
 # 停止旧进程
 pkill -f "node /opt/cbti/server.js" 2>/dev/null || true
+pkill -f "node server.js" 2>/dev/null || true
 # 后台启动
 ADMIN_TOKEN="$TOKEN" PORT="$PORT" DATA_DIR=/opt/cbti/data nohup node server.js > /opt/cbti/app.log 2>&1 &
 # 写入开机自启
