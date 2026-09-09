@@ -1,11 +1,13 @@
 #!/bin/bash
 # CBTI「测啤气」一键部署脚本
 # 适用：腾讯云/阿里云/华为云 轻量应用服务器（Ubuntu 20.04/22.04）
-# 用法：sudo bash deploy.sh 你的看板口令
+# 用法：sudo bash deploy.sh 看板口令 [对外端口，默认80]
+# 示例：sudo bash deploy.sh mytoken 3000
 
 set -e
 
 TOKEN="${1:-cbti-admin-2026}"
+PORT="${2:-80}"
 REPO="https://github.com/smallbaby612/cbti-beer-personality.git"
 
 echo "===== 1/4 安装 Docker ====="
@@ -33,16 +35,20 @@ docker rm cbti 2>/dev/null || true
 docker run -d \
   --name cbti \
   --restart unless-stopped \
-  -p 80:3000 \
+  -p ${PORT}:3000 \
   -e ADMIN_TOKEN="$TOKEN" \
   -e DATA_DIR=/app/data \
   -v cbti-data:/app/data \
   cbti-app
 
+IP=$(curl -s ifconfig.me 2>/dev/null || echo "服务器IP")
+SUFFIX=""
+[ "$PORT" != "80" ] && SUFFIX=":${PORT}"
+
 echo ""
 echo "======================================"
 echo "  部署完成！"
-echo "  测试页面：http://服务器IP/"
-echo "  数据看板：http://服务器IP/dashboard"
+echo "  测试页面：http://${IP}${SUFFIX}/"
+echo "  数据看板：http://${IP}${SUFFIX}/dashboard"
 echo "  看板口令：$TOKEN"
 echo "======================================"
