@@ -1,8 +1,8 @@
 #!/bin/bash
-# CBTI「测啤气」一键部署脚本（国内服务器优化版）
-# 适用：腾讯云/阿里云/华为云 轻量应用服务器（Ubuntu 20.04/22.04，大陆地域）
+# CBTI「测啤气」一键部署脚本（国内服务器·免Docker版）
+# 直接安装 Node.js 运行，避开 Docker 国内网络问题
 # 用法：sudo bash deploy.sh 看板口令 [对外端口，默认80]
-# 示例：sudo bash deploy.sh mytoken 3000
+# 示例：sudo bash deploy.sh cbti2026ok 3000
 
 set -e
 
@@ -10,54 +10,56 @@ TOKEN="${1:-cbti-admin-2026}"
 PORT="${2:-80}"
 REPO="https://github.com/smallbaby612/cbti-beer-personality.git"
 
-echo "===== 1/5 安装 Docker（国内镜像源）====="
-if ! command -v docker &> /dev/null; then
-  curl -fsSL https://get.docker.com | sh -s -- --mirror Aliyun || {
-    echo "Aliyun 镜像失败，尝试手动 apt 安装..."
-    apt-get update -qq
-    apt-get install -y -qq docker.io
-  }
-  systemctl enable docker && systemctl start docker
+echo "===== 1/4 安装 Node.js（国内镜像源）====="
+if ! command -v node &> /dev/null; then
+  curl -fsSL https://registry.npmmirror.com/-/binary/node/latest-v20.x/node-v20.18.1-linux-x64.tar.gz -o /tmp/node.tar.gz
+  mkdir -p /usr/local/node && tar -xzf /tmp/node.tar.gz -C /usr/local/node --strip-components=1
+  ln -sf /usr/local/node/bin/node /usr/local/bin/node
+  ln -sf /usr/local/node/bin/npm /usr/local/bin/npm
+  ln -sf /usr/local/node/bin/npx /usr/local/bin/npx
+  node -v && npm -v
 else
-  echo "Docker 已安装，跳过"
+  echo "Node.js 已安装：$(node -v)，跳过"
 fi
 
-echo "===== 2/5 配置 Docker 镜像加速 ====="
-mkdir -p /etc/docker
-cat > /etc/docker/daemon.json <<'EOF'
-{
-  "registry-mirrors": [
-    "https://docker.1ms.run",
-    "https://docker.m.daocloud.io",
-    "https://dockerproxy.net"
-  ]
-}
-EOF
-systemctl daemon-reload 2>/dev/null || true
-systemctl restart docker
-
-echo "===== 3/5 拉取代码 ====="
+echo "===== 2/4 拉取代码 ====="
 if [ -d /opt/cbti ]; then
-  cd /opt/cbti && git pull || { cd / && rm -rf /opt/cbti && git clone "$REPO" /opt/cbti && cd /opt/cbti; }
+  cd /opt/cbti && git pull
 else
   git clone "$REPO" /opt/cbti
   cd /opt/cbti
 fi
 
-echo "===== 4/5 构建镜像 ====="
-docker build -t cbti-app .
+echo "===== 3/4 安装依赖 ====="
+npm config set registry https://registry.npmmirror.com
+npm install --omit=dev
 
-echo "===== 5/5 启动服务 ====="
-docker stop cbti 2>/dev/null || true
-docker rm cbti 2>/dev/null || true
-docker run -d \
-  --name cbti \
-  --restart unless-stopped \
-  -p ${PORT}:3000 \
-  -e ADMIN_TOKEN="$TOKEN" \
-  -e DATA_DIR=/app/data \
-  -v cbti-data:/app/data \
-  cbti-app
+echo "===== 4/4 启动服务 ====="
+mkdir -p /opt/cbti/data
+# 停止旧进程
+pkill -f "node /opt/cbti/server.js" 2>/dev/null || true
+# 后台启动
+ADMIN_TOKEN="$TOKEN" PORT="$PORT" DATA_DIR=/opt/cbti/data nohup node server.js > /opt/cbti/app.log 2>&1 &
+# 写入开机自启
+cat > /etc/systemd/system/cbti.service <<EOF
+[Unit]
+Description=CBTI Beer Personality Test
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/cbti
+Environment=ADMIN_TOKEN=$TOKEN
+Environment=PORT=$PORT
+Environment=DATA_DIR=/opt/cbti/data
+ExecStart=/usr/local/bin/node /opt/cbti/server.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+systemctl enable cbti
 
 IP=$(curl -s ifconfig.me 2>/dev/null || echo "服务器IP")
 SUFFIX=""
@@ -69,4 +71,5 @@ echo "  部署完成！"
 echo "  测试页面：http://${IP}${SUFFIX}/"
 echo "  数据看板：http://${IP}${SUFFIX}/dashboard"
 echo "  看板口令：$TOKEN"
+echo "  日志查看：tail -f /opt/cbti/app.log"
 echo "======================================"
